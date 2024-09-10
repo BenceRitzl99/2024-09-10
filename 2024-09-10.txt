@@ -1,0 +1,207 @@
+Stored Procedure/Tárolt eljárás
+	-> ezek az adatbázishoz kapcsolódnak
+
+Trigger, ami a táblához kapcsolódik, hogy a DML=data manipulating language utasításai: INSERT INTO, UPDATE, DELETE 
+esetén bizonyos automatizmusokat érvényesítsen.
+
+XAMPP: virtuális web- és tartalomszolgáló (ami a localhost-on működik, ennek IPv4 címe: 127.0.0.0/8 tartományból származik,
+általában 127.0.0.1/255.0.0.0)
+
+az Apache webszerver a külvilág számára elérhető: http - 80, https - 443 port-okon (vagyis van a webszervernek egy 
+publikus IPv4 címe és a kliensek ezt "célozzák meg" az említett port-ok valamelyikén /https un. biztonságos kapcsolatot biztosít, 
+ami egy tanusítvánnyal hitelesített két kulcsos: nyílvános és titkos, titkosítást használva garantálja, hogy a kliens-szerver gépeken túl,
+más ne férhessen érdemben a kommunikációs csatornán közvetített tartalmakhoz)
+
+a MySQL adatbázis szerver a külvilág számáraközvetlenül nem hozzáférhető az adatbiztonság megteremtése miatt.
+
+A jelzett problémák a webszerveren működő webalkalmazások révén lesznek áthidalhatók: backend. 
+Esetünkben egy ilyen szerveroldali program a phpmyadmin, ami garantálja, 
+hogy egy webböngészőben legyen lehetőségük a frontend-nek mondott, interaktív programmal, adatmanipulációkat végezni.
+
+
+
+Szükségünk lesz egy adatbázisra:
+
+CREATE DATABASE sppeldak CHARSET utf8 COLLATE utf8_general_ci;
+
+
+DELIMITER $$
+CREATE PROCEDURE elso()
+BEGIN
+	SELECT "(c) 2024. Ritzl Bence", RAND();
+END$$
+DELIMITER ;
+
+
+Kipróbálása: CALL elso()
+
+Noha eljárások kategória megjelenik az adatbázisunk alárendeltjeként, a tényleges nyílvántartásba vétel, ami a használhatóság alapja a mysql rendszeradatbázis, proc nevezetű táblájában történik meg.
+
+Semelyik CREATE nem képes arra, hogy ugyanazt a tartalmat többször is létrehozza. Így van ez a CREATE PROCEDURE-rel is. Emiatt a tárolt eljárás, függvény és trigger-ek kódjait, érdemes a DROP PROCEDURE 	utasítással kezdeni, hogy előbb eltakarítsuk a korábbi tartalmat és utána létrehozhassuk az újat.
+
+
+DROP PROCEDURE IF EXISTS elso;
+DELIMITER $$
+CREATE PROCEDURE elso()
+BEGIN
+	SELECT "(c) 2024. Ritzl Bence", RAND();
+END$$
+DELIMITER ;
+
+
+DROP PROCEDURE IF EXISTS lottostatisztika;
+DELIMITER //
+CREATE PROCEDURE lottostatisztika()
+BEGIN
+	# DEKLARÁCIÓK
+	DECLARE lsz INT;
+	-- FUNKCIONALITÁS
+	SET lsz=FLOOR(RAND()*90+1);
+	SELECT lsz; 	
+
+END//
+DELIMITER ;
+
+
+
+
+Mivel nincs tömbünk, helyette használjunk táblát.
+
+CREATE TABLE tippek(szam INT PRIMARY KEY);
+
+Mivel az elsődlges kulcs garantálja az egyediséget, így újabb probléma merül fel amiatt, hogy az érték többször is előfordulhat.
+
+KIVÉTEL vs. HIBA
+(Minden hiba kivétel, de nem minden kivétel hiba = a rendellenességek nem feltétlenül kell, hogy végzetesek legyenek)
+
+
+
+DROP PROCEDURE IF EXISTS lottostatisztika;
+DELIMITER //
+CREATE PROCEDURE lottostatisztika()
+BEGIN
+	# DEKLARÁCIÓK
+	-- 1. változók
+	DECLARE lsz INT;
+	-- 2. a lekérdezésekhez kapcsolódó CURSOR-ok
+	-- 3. kivételkezeléshez tartozó deklarációkat tartalmazza
+	DECLARE CONTINUE HANDLER FOR 1062 SELECT "Ez már szerepel", lsz;
+	-- FUNKCIONALITÁS
+	CREATE TABLE tippek(szam INT PRIMARY KEY);
+	SET lsz=FLOOR(RAND()*90+1);
+	INSERT INTO tippek VALUES(lsz);
+	SET lsz=FLOOR(RAND()*90+1);
+	INSERT INTO tippek VALUES(lsz);
+	SET lsz=FLOOR(RAND()*90+1);
+	INSERT INTO tippek VALUES(lsz);
+	SET lsz=FLOOR(RAND()*90+1);
+	INSERT INTO tippek VALUES(lsz);
+	SET lsz=FLOOR(RAND()*90+1);
+	INSERT INTO tippek VALUES(lsz);
+	SELECT * FROM tippek;
+	DROP TABLE tippek;	
+
+END//
+DELIMITER ;
+
+
+
+----------------------------------------------------------------------------------------------------------------------
+
+
+
+
+DROP PROCEDURE IF EXISTS lottostatisztika;
+DELIMITER //
+CREATE PROCEDURE lottostatisztika()
+BEGIN
+	# DEKLARÁCIÓK
+	-- 1. változók
+	DECLARE i INT DEFAULT 1;
+	DECLARE lsz INT;
+	-- 2. a lekérdezésekhez kapcsolódó CURSOR-ok
+	-- 3. kivételkezeléshez tartozó deklarációkat tartalmazza
+	DECLARE CONTINUE HANDLER FOR 1062 SET i=i-1;
+	-- FUNKCIONALITÁS
+	CREATE TABLE tippek(szam INT PRIMARY KEY);
+	WHILE i<=5 DO
+		SET lsz=FLOOR(RAND()*90+1);
+		INSERT INTO tippek VALUES(lsz);
+		SET i=i+1;
+	END WHILE;
+	SELECT * FROM tippek;
+	DROP TABLE tippek;	
+
+END//
+DELIMITER ;
+
+
+-------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+DROP PROCEDURE IF EXISTS lottostatisztika;
+DELIMITER //
+CREATE PROCEDURE lottostatisztika()
+BEGIN
+	# DEKLARÁCIÓK
+	-- 1. változók
+	DECLARE i INT DEFAULT 1;
+	DECLARE lsz INT;
+	-- 2. a lekérdezésekhez kapcsolódó CURSOR-ok
+	-- 3. kivételkezeléshez tartozó deklarációkat tartalmazza
+	# DECLARE CONTINUE HANDLER FOR 1062 SET i=i-1;
+	DECLARE CONTINUE HANDLER FOR 1062 SELECT "ugyanaz: ",lsz;
+	-- FUNKCIONALITÁS
+	CREATE TABLE tippek(szam INT PRIMARY KEY);
+	# WHILE i<=5 DO
+	WHILE (SELECT COUNT(*) FROM tippek)<5 DO
+		SET lsz=FLOOR(RAND()*90+1);
+		INSERT INTO tippek VALUES(lsz);
+		# SET i=i+1;
+	END WHILE;
+	SELECT * FROM tippek;
+	DROP TABLE tippek;	
+
+END//
+DELIMITER ;
+
+
+Az olyan lekérdezés, amely egyetlen értéket szolgáltat eredményül, pl SELECT COUNT(*) FROM tippek; felhasználhatjuk értékadásban (SET), valamint feltétel megfogalmazások esetén, mint Sub-query-t/al-lekérdezést, a szükséges zárójelezéssel.
+
+Ha a lekérdezés több értéket ad vissza, illetve több sort, akkor már a fenti megoldás nem alkalmazható. Ilyen esetben válik szükségessé a CURSOR, ami a lekérdezés eredményhalmazát, mint file-t veszi figyelembe és így garantálja a filekezelések során alkalmazott 
+menetrendet:
+- megnyitás
+- olvasás (ameddig lehetséges)
+- bezárás
+
+A megnyitás (OPEN) hatására hajtódik végre a SELECT utasítással megfogalmazott lekérdezés, amelynek soraihoz az olvasást (FETCH) biztosítja, hogy végül a bezárást a CLOSE-zal végezhessük el.
+
+
+Kurzor deklarálás:
+
+DECLARE noveles CURSOR FOR SELECT * FROM tippek;
+...
+CREATE TABLE IF NOT EXISTS gyakorisagok(szam INT, db INT DEFAULT 0);
+DELETE FROM gyakorisagok;
+...
+egy 1-től 90-ig lépegető ciklussal felvesszük 0 db-bal a lehetséges lottószámokat
+...
+OPEN noveles;
+itt egy olyan ciklus működik, amely rendre veszi a tippek tábla 5 sorát
+FETCH noveles INTO lsz;
+UPDATE gyakorisagok SET db=db+1 WHERE szam=lsz;
+
+végezetül: CLOSE noveles;
+
+
+
+
+
+
+
+
