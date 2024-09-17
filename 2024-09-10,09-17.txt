@@ -236,7 +236,73 @@ DELIMETER;
 A BEGIN után közvetlenül kell kerüljenek a DECLARE kulcsszóval megírt deklarációk. Ezek sorrendje is kötött:
 1.) A változók deklarálása
 2.) A SELECT utasítással megfogalmazható lekérdezésekhez kapcsoló mutatók/CURSOR-ok deklarálása
-3.) A kivételek kezelésére szolgáló megoldások deklarálása a példánkban CONTINUE HANDLER a 1062-es
+3.) A kivételek kezelésére szolgáló megoldások deklarálása a példánkban CONTINUE HANDLER a 1062-es "kulcsütközés" hiba bekövetkeztére.
+
+Pillanatnyi programunk ltrehoz egy ideiglenes tippek nevű egyetlen szam elnevezésű mezőt tartalmazó táblát, amelyben ez a mező azért elsődleges kulcs, hogy kivédhessük az azonosságokat. A számok egymásután történő előállítása az lsz elnevezésű változóban történik, aminek aktuális értékét a tippek táblához próbáljuk hozzáadni. Ha a tippek táblában van 5 sor, akkor a ciklus befejeződik és kiirja azokat, majd törli a tippek nevezetű táblát.
+
+
+A programunkat szeretnénk úgy kiteljesíteni, hogy kívülről, paraméterként határozhassk meg azt, hgy hány darab sorsolás kerüljön végrehajtásra. Az egyes sorsolásokután szeretnénk megállapítani, hogy melyik lottószám hányszor fordult elő összességében.
+
+A lottószámok gyakoriságának megállapítása érdekében hozzunk létre egy pl. egy gyakorisagok(szam, db) táblát, amelyben 1-től, 90-ig szerepelnek a lottószámok, kezdetben 0 db értékkel, mivel egyiket sem sorsolták ki.
+(Nem feltétlen szükséges minden táblánál elsődlege kulcs, ugyanis az csak indokolatlan területeket emészt fel a Bináris fa rendezési algoritmus adminisztrációja következtében.)
+
+CREATE TABLE gyakorisagok(
+	szam INT
+	db INT DEFAULT 0);
+
+Ebbe a táblába szükséseg felvenni a lehetséges lottószámokat(1-90)
+
+
+DROP PROCEDURE IF EXISTS lottostatisztika;
+DELIMITER //
+CREATE PROCEDURE lottostatisztika(IN mennyi INT)
+BEGIN
+	
+	DECLARE i INT DEFAULT 1;
+	DECLARE lsz INT;
+	DECLARE kesz INT DEFAULT 0;
+	DECLARE noveles CURSOR FOR SELECT * FROM tippek;
+	DECLARE CONTINUE HANDLER FOR 1062 SELECT "ugyanaz: ",lsz;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND SET kesz=1;
+	CREATE TABLE IF NOT EXISTS gyakorisagok(szam INT, db INT DEFAULT 0);
+	DELETE FROM gyakorisagok;
+	WHILE i<=90 DO
+		INSERT INTO gyakorisagok(szam) VALUES(i);
+		SET i=i+1;
+	END WHILE;
+	WHILE i<=mennyi DO
+		CREATE TABLE tippek(szam INT PRIMARY KEY);
+		WHILE (SELECT COUNT(*) FROM tippek)<5 DO
+			SET lsz=FLOOR(RAND()*90+1);
+			INSERT INTO tippek VALUES(lsz);
+		END WHILE;
+		OPEN noveles;
+		ciklus: LOOP
+			FETCH noveles INTO lsz;
+			IF kesz THEN
+				LEAVE ciklus;
+			END IF;
+			UPDATE gyakorisagok SET db=db+1 WHERE szam=lsz;
+		END LOOP ciklus;
+		CLOSE noveles;
+		DROP TABLE tippek;
+		SET i=i+1;
+		SET kesz=0;
+	END WHILE;
+	SELECT * FROM gyakorisagok;	
+END//
+DELIMITER ;
+
+A tarolt eljárás esetén 3 féle paramétert használhatunk:
+
+IN -> csak bemenő adat
+OUT -> olyan speciális eljárás esetében használatos, amikor valamilyen visszatérési értéket is szolgáltat
+INOUT -> mindkét irányra alkalmas paraméter
+
+DELETE FROM gykorisagok; -> ha létezne a tábla egy korábbi kísérlet adataival, akkor azokat szeretnénk megsemmisíteni.
+
+(CALL eljárás(10); ilyenkor azt sejthetjük hogy a 10 szám egy IN típusú paraméterbe került) 
+
 
 
 
