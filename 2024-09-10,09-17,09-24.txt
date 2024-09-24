@@ -304,11 +304,149 @@ DELETE FROM gykorisagok; -> ha létezne a tábla egy korábbi kísérlet adataiv
 (CALL eljárás(10); ilyenkor azt sejthetjük hogy a 10 szám egy IN típusú paraméterbe került) 
 
 
+SELECT szam FROM gyakorisagok ORDER BY db DESC; Ezzel a gyakoriságokat tudjuk megnézni, hogy melyik számból volt a legtöbb, csökkenő sorrendben(DESC)
+
+SELECT szam,db FROM gyakorisagok ORDER BY db DESC; Így látjuk azt is hány alkalommal fordult elő az adott szám.
 
 
+Ha a holtverseny az ötödik helyen mutatkozik, és pl 3 tételnél van, akkor 5 helyett 7 tételt kell láthatóvá tenni
+
+szam    db
+74	69
+26	64
+23	64
+52	64
+43	62
+58	62
+61	62
+
+A MySQL felkínálja a LIMIT klauzulát, amivel azt a látszatot keltetjük, hogy nincs holtverseny.
+Szükséges viszont egy olyan lekérdezés, ami minden helyzetben a korrekt értéket mutatja.
+
+SELECT szam,db FROM gyakorisagok ORDER BY db DESC LIMIT 5;
+
+---------------------------------------------------------------------------
+
+
+SELECT t1.db FROM(SELECT szam,db FROM gyakorisagok ORDER BY db DESC LIMIT 5) AS t1 ORDER BY t1.db LIMIT 1;
+
+
+SELECT szam,db FROM gyakorisagok 
+WHERE db>=(SELECT t1.db FROM
+	(SELECT szam,db FROM gyakorisagok ORDER BY db DESC LIMIT 5) AS t1 ORDER BY t1.db LIMIT 1);
+
+
+SELECT utasítás záradékainak SORRENDJE:
+
+- WHERE --> lehet egyszerű illetve összetett logikai formula(utóbbi tartalmaz AND, OR, NOT legalabb egy logikai műveleteket is)
+
+- GROUP BY mezőlista (megjelenítésre kerülő eredményhalmaz csoportosítása érdekében használható) pl. éves, havi, napi bevétel összesítés, aminél a SUM aggregátor függvényre is szükség lehet.
+
+HAVING feltétel (kb ugyanazt jelenti mint a WHERE-nél, azzal a különbséggel, hogy csoportosítás közben előállított aggregált(SUM, COUNT, AVG)
+értékekre vonatkozik)
+
+- ORDER mezőlista (mező1 DESC,mező2,mező 3 DESC) elsődlegesen a mező1-ben tárolt értékek csökkenő sorrendje érvényesül, de ha előfordul értékegyenlőség, akkor a mező2, esetleg a mező3 értékei alapján határozódik meg a sorrend.
+
+SELECT db,COUNT(*) AS hanyszor FROM gyakorisagok 
+WHERE db>=(SELECT t1.db FROM
+	(SELECT szam,db FROM gyakorisagok ORDER BY db DESC LIMIT 5) AS t1 ORDER BY t1.db LIMIT 1)
+GROUP BY db HAVING hanyszor>=2;
+
+
+Ugyanaz megoldást másképp helyettesíteni
+
+
+SELECT szam,db FROM gyakorisagok 
+WHERE db>=(SELECT t1.db FROM
+	(SELECT szam,db FROM gyakorisagok ORDER BY db DESC LIMIT 5) AS t1 ORDER BY t1.db LIMIT 1);
+
+
+Több allekérdezés is alkalmazó megoldásunknak megfelelő, lekérdezésen és cikluson alapuló programrész volna szükséges.
+
+1. Miután összaállt az öt tételes (LIMIT 5) gyakorisági darabszámok csökkenő sorrendje szerinti eredményhalmaz
+2. Vegyük ki abból az 5. tétel db értékét, további felhasználás céljából
+
+Lekérdezés eleje:
+
+SELECT szam FROM gyakorisagok
+WHERE db>=az előbbiek szerint megállapított érték>;
+
+
+Utasításra módosul
+
+A tárolt eljárások/függvények esteén a lekérdezések felhasználása érdekében kell alkalmaznunk, a CURSOR-t. Ami egy lekérdezés eredményhalmazára úgy tekint, mintha az egy FILE volna (filekezelés: megnyitom, dolgozom vele, bezárom)
+
+
+DROP PROCEDURE IF EXISTS lottostatisztika;
+DELIMITER //
+CREATE PROCEDURE lottostatisztika(IN mennyi INT)
+BEGIN
 	
+	DECLARE i INT DEFAULT 1;
+	DECLARE lsz INT;
+	DECLARE kesz INT DEFAULT 0;
+	DECLARE egyforma INT DEFAULT 0;
+	DECLARE minamaxbol 0;
+	DECLARE noveles CURSOR FOR SELECT * FROM tippek;
+	DECLARE eredmeny CURSOR FOR SELECT db FROM gyakorisagok ORDER BY db DESC LIMIT 5;
+	DECLARE CONTINUE HANDLER FOR 1062 egyforma=egyforma+1;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND SET kesz=1;
+	CREATE TABLE IF NOT EXISTS gyakorisagok(szam INT, db INT DEFAULT 0);
+	DELETE FROM gyakorisagok;
+	WHILE i<=90 DO
+		INSERT INTO gyakorisagok(szam) VALUES(i);
+		SET i=i+1;
+	END WHILE;
+	WHILE i<=mennyi DO
+		CREATE TABLE tippek(szam INT PRIMARY KEY);
+		WHILE (SELECT COUNT(*) FROM tippek)<5 DO
+			SET lsz=FLOOR(RAND()*90+1);
+			INSERT INTO tippek VALUES(lsz);
+		END WHILE;
+		OPEN noveles;
+		ciklus: LOOP
+			FETCH noveles INTO lsz;
+			IF kesz THEN
+				LEAVE ciklus;
+			END IF;
+			UPDATE gyakorisagok SET db=db+1 WHERE szam=lsz;
+		END LOOP ciklus;
+		CLOSE noveles;
+		DROP TABLE tippek;
+		SET i=0;
+		SET kesz=0;
+	END WHILE;
+	OPEN eredmeny;
+	SET i=1;
+	REPEAT
+		FETCH eredmeny INTO minamaxbol;
+		SET i=i+1;
+		
+	UNTIL i=5 END REPEAT;
+	CLOSE eredmeny;
+	SELECT szam FROM gyakorisagok WHERE db=minamaxbol;
+END//
+DELIMITER ;
 
 
+Adatbázis, azon belül lottostatisztika, amelyben lehetőség nyílik egy Java vagy C# programból felhasználni, olyan végrehajtásokra, amelyekből 5 szám olvasható ki, ami a legtöbbször szerepel.
+
+MySQL adatbázis-szervert kell használni, hgy hozzá lehessen férni az előkészített tartalmakhoz.
+
+Tetszőleges programozási nyelvek esetén egész biztosan meg kell oldani az adatbázis-szerverhez történő csatlakozás.
+Olyan osztály szükséges, ami a kapcsolódás paramétereivel volna példányosaítható.
+
+Java:
+
+kapcsolati karakterlánc: "jdbc:mysql://
+jdbc = java database connectivity (~odbc = open database connectivity)
+
+DNS - Domain name service
+
+Connection kapcsolat=Diriver Manager.getConnection(kapcs_string,"root")
+
+
+C#:
 
 
 
